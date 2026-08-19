@@ -6,6 +6,7 @@ import nodemailer from 'nodemailer';
 import twilio from 'twilio';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import crypto from 'node:crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -22,10 +23,17 @@ const corsOptions = {
     optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
+
+// Health check - Render healthCheckPath, and a quick reachability ping when
+// tunnelling webhooks through ngrok.
+app.get('/health', (req, res) => res.json({ ok: true }));
+
+// TODO: drop the VITE_ fallback once the Render env vars are renamed to RAZORPAY_KEY_ID.
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID;
 
 const razorpay = new Razorpay({
-    key_id: process.env.VITE_RAZORPAY_KEY_ID,
+    key_id: RAZORPAY_KEY_ID,
     key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
@@ -63,7 +71,7 @@ app.post('/api/create-payment-link', async (req, res) => {
             order_id: order.id,
             amount: order.amount,
             currency: order.currency,
-            key_id: process.env.VITE_RAZORPAY_KEY_ID
+            key_id: RAZORPAY_KEY_ID
         });
     } catch (err) {
         console.error(err);
