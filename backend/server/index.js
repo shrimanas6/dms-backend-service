@@ -7,6 +7,7 @@ import twilio from 'twilio';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import crypto from 'node:crypto';
+import { createClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,11 +24,26 @@ const corsOptions = {
     optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '100kb' }));
 
-// Health check - Render healthCheckPath, and a quick reachability ping when
+// ---------------------------------------------------------------------------
+// Middleware ordering below is load-bearing.
+//
+// express.json() consumes the request stream, and re-serialising req.body is NOT
+// byte-identical to what Razorpay signed (key order, whitespace, unicode
+// escapes). Any route that verifies a signature over the raw payload - i.e. the
+// Razorpay webhook - must therefore be registered ABOVE the global JSON parser
+// using express.raw(). Such a route responds without calling next(), so
+// express.json() never sees it.
+// ---------------------------------------------------------------------------
+
+// Health check - Render's healthCheckPath, and a quick reachability ping when
 // tunnelling webhooks through ngrok.
 app.get('/health', (req, res) => res.json({ ok: true }));
+
+// --- raw-body routes are registered here; nothing below may be moved above ---
+
+// Global JSON parser for every other route.
+app.use(express.json({ limit: '100kb' }));
 
 // TODO: drop the VITE_ fallback once the Render env vars are renamed to RAZORPAY_KEY_ID.
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID;
@@ -53,57 +69,231 @@ const twilioClient = process.env.TWILIO_SID && process.env.TWILIO_AUTH_TOKEN
     ? twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN)
     : null;
 
-app.post('/api/create-payment-link', async (req, res) => {
+// ---------------------------------------------------------------------------
+// Supabase (service role)
+//
+// The service role key bypasses row level security. It is what lets the backend
+// own the donations table while the browser is restricted to reading its own
+// rows. It must never reach the frontend.
+// ---------------------------------------------------------------------------
+const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+    })
+    : null;
+
+// Fail loudly at boot rather than silently mid-payment.
+const missingEnv = [
+    ['RAZORPAY_KEY_ID', RAZORPAY_KEY_ID],
+    ['RAZORPAY_KEY_SECRET', process.env.RAZORPAY_KEY_SECRET],
+    ['SUPABASE_URL', process.env.SUPABASE_URL],
+    ['SUPABASE_SERVICE_ROLE_KEY', process.env.SUPABASE_SERVICE_ROLE_KEY],
+].filter(([, value]) => !value).map(([name]) => name);
+
+if (missingEnv.length) {
+    console.error(`❌ Missing required environment variables: ${missingEnv.join(', ')}`);
+    console.error('   Payments will not work. See backend/.env.example.');
+    if (process.env.NODE_ENV === 'production') process.exit(1);
+}
+if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
+    console.warn('⚠️  RAZORPAY_WEBHOOK_SECRET is not set - the payment webhook is disabled.');
+}
+
+/**
+ * Constant-time comparison of two hex signature strings.
+ *
+ * Compared as UTF-8 bytes rather than Buffer.from(sig, 'hex'): the hex decoder
+ * silently drops invalid nibbles, which can make two different signatures decode
+ * to equal-length buffers.
+ */
+function safeEqualHex(a, b) {
+    const ba = Buffer.from(String(a), 'utf8');
+    const bb = Buffer.from(String(b), 'utf8');
+    if (ba.length !== bb.length) return false; // timingSafeEqual throws on length mismatch
+    return crypto.timingSafeEqual(ba, bb);
+}
+
+/**
+ * Verifies the caller's Supabase access token and attaches the trusted user to
+ * req.user. Handlers must take the user id from req.user.id and never from the
+ * request body.
+ *
+ * Uses supabaseAdmin.auth.getUser() rather than verifying the JWT locally: it
+ * needs no extra dependency, keeps working if the project migrates to asymmetric
+ * signing keys, and detects sessions that have been revoked.
+ */
+async function requireAuth(req, res, next) {
+    if (!supabaseAdmin) {
+        return res.status(503).json({ error: 'Server auth is not configured' });
+    }
+
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
+    if (!token) {
+        return res.status(401).json({ error: 'Missing authorization token' });
+    }
+
     try {
-        const { amount, customer } = req.body;
+        const { data, error } = await supabaseAdmin.auth.getUser(token);
+        if (error || !data?.user) {
+            return res.status(401).json({ error: 'Invalid or expired session' });
+        }
+        req.user = data.user;
+        next();
+    } catch (err) {
+        console.error('Auth check failed:', err);
+        return res.status(503).json({ error: 'Auth check failed' });
+    }
+}
+
+/* ------------------------------- CREATE ORDER ------------------------------ */
+
+const MIN_PAISE = 100;         // ₹1 - Razorpay's minimum
+const MAX_PAISE = 50_000_000;  // ₹5,00,000
+const AMOUNT_RE = /^\d{1,7}(\.\d{1,2})?$/;
+
+app.post('/api/payments/order', requireAuth, async (req, res) => {
+    try {
+        // Validate server-side. The client does the same check for UX only; this
+        // is the authoritative one.
+        const raw = String(req.body?.amount ?? '').trim();
+        if (!AMOUNT_RE.test(raw)) {
+            return res.status(400).json({ error: 'Invalid amount' });
+        }
+
+        const amountPaise = Math.round(Number(raw) * 100);
+        if (amountPaise < MIN_PAISE || amountPaise > MAX_PAISE) {
+            return res.status(400).json({
+                error: `Amount must be between ₹${MIN_PAISE / 100} and ₹${MAX_PAISE / 100}`,
+            });
+        }
+
+        const receipt = `don_${crypto.randomUUID().replace(/-/g, '')}`; // 36 chars; Razorpay caps at 40
 
         const order = await razorpay.orders.create({
-            amount: Math.round(Number(amount) * 100),
+            amount: amountPaise,
             currency: 'INR',
-            receipt: `receipt_${Date.now()}`,
-            notes: {
-                customer_name: customer?.name,
-                customer_email: customer?.email
-            }
+            receipt,
+            // notes.user_id is how the webhook recovers this donation if the
+            // pending insert below fails but the user goes on to pay anyway.
+            notes: { user_id: req.user.id, email: req.user.email ?? '' },
         });
+
+        const { error: dbError } = await supabaseAdmin.from('donations').insert({
+            user_id: req.user.id,          // trusted: from the verified token, never the body
+            amount: amountPaise / 100,
+            amount_paise: amountPaise,
+            currency: 'INR',
+            transaction_id: order.id,      // satisfies NOT NULL; replaced by the payment id on capture
+            razorpay_order_id: order.id,
+            receipt,
+            status: 'created',
+            notes: 'Razorpay donation',
+        });
+
+        if (dbError) {
+            console.error('Failed to persist pending donation for order', order.id, dbError);
+            return res.status(500).json({ error: 'Could not start payment' });
+        }
 
         res.json({
             order_id: order.id,
             amount: order.amount,
             currency: order.currency,
-            key_id: RAZORPAY_KEY_ID
+            key_id: RAZORPAY_KEY_ID,
         });
     } catch (err) {
-        console.error(err);
+        console.error('Order creation failed:', err);
         res.status(500).json({ error: 'Order creation failed' });
     }
 });
 
-/* ---------------- VERIFY PAYMENT ---------------- */
-app.post('/api/verify-payment', (req, res) => {
+/* ------------------------------ VERIFY PAYMENT ----------------------------- */
+
+app.post('/api/payments/verify', requireAuth, async (req, res) => {
     try {
-        const {
-            razorpay_order_id,
-            razorpay_payment_id,
-            razorpay_signature
-        } = req.body;
-
-        const body = razorpay_order_id + "|" + razorpay_payment_id;
-
-        const expectedSignature = crypto
-            .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-            .update(body)
-            .digest("hex");
-
-        if (expectedSignature === razorpay_signature) {
-            res.json({ success: true, payment_id: razorpay_payment_id });
-        } else {
-            res.status(400).json({ success: false });
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+        const fields = [razorpay_order_id, razorpay_payment_id, razorpay_signature];
+        if (!fields.every((v) => typeof v === 'string' && v.length > 0)) {
+            return res.status(400).json({ success: false, error: 'Missing payment fields' });
         }
+
+        const expected = crypto
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+            .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+            .digest('hex');
+
+        if (!safeEqualHex(expected, razorpay_signature)) {
+            // Deliberately do NOT mark the row failed - a bad signature may be
+            // someone probing another user's order id.
+            console.warn('Signature mismatch for order', razorpay_order_id);
+            return res.status(400).json({ success: false, error: 'Signature verification failed' });
+        }
+
+        // Best-effort confirmation with Razorpay; also gives us the real instrument.
+        let method = null;
+        try {
+            const payment = await razorpay.payments.fetch(razorpay_payment_id);
+            if (payment.order_id !== razorpay_order_id) {
+                return res.status(400).json({ success: false, error: 'Order mismatch' });
+            }
+            method = payment.method ?? null;
+        } catch (e) {
+            console.warn('payments.fetch failed (non-fatal):', e?.message);
+        }
+
+        const { data: updated, error: updErr } = await supabaseAdmin
+            .from('donations')
+            .update({
+                status: 'paid',
+                razorpay_payment_id,
+                transaction_id: razorpay_payment_id,
+                method,
+                paid_at: new Date().toISOString(),
+            })
+            .eq('razorpay_order_id', razorpay_order_id)
+            .eq('user_id', req.user.id)                      // ownership: cannot claim another user's order
+            .in('status', ['created', 'pending', 'failed'])  // idempotency: never clobber a paid row
+            .select('id, amount, razorpay_payment_id')
+            .maybeSingle();
+
+        if (updErr) throw updErr;
+
+        if (!updated) {
+            // Zero rows updated: either the webhook already marked this paid, or
+            // the order does not belong to the caller.
+            const { data: existing } = await supabaseAdmin
+                .from('donations')
+                .select('id, amount, status, razorpay_payment_id')
+                .eq('razorpay_order_id', razorpay_order_id)
+                .eq('user_id', req.user.id)
+                .maybeSingle();
+
+            if (existing?.status === 'paid') {
+                return res.json({
+                    success: true,
+                    payment_id: existing.razorpay_payment_id ?? razorpay_payment_id,
+                    donation_id: existing.id,
+                    amount: existing.amount,
+                    already_recorded: true,
+                });
+            }
+
+            return res.status(404).json({ success: false, error: 'Order not found for this user' });
+        }
+
+        res.json({
+            success: true,
+            payment_id: updated.razorpay_payment_id,
+            donation_id: updated.id,
+            amount: updated.amount,
+        });
     } catch (err) {
-        res.status(500).json({ success: false });
+        console.error('Verify failed:', err);
+        res.status(500).json({ success: false, error: 'Verification error' });
     }
 });
+
 
 app.post('/api/send-reminder', async (req, res) => {
     const { name, email, phone, daysSinceLastDonation } = req.body;
