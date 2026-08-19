@@ -6,7 +6,7 @@ interface Profile {
   id: string;
   name: string;
   email: string;
-  phone?: string;
+  phone?: string | null;
 }
 
 interface AuthContextType {
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Attempt to heal: create missing profile record
           const { error: insertError } = await supabase
             .from('profiles')
-            .insert(virtualProfile as any);
+            .insert(virtualProfile);
 
           if (insertError) {
             console.warn('AuthContext: Failed to auto-heal profile:', insertError.message);
@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             await supabase
               .from('user_settings')
-              .insert({ user_id: user.id } as any);
+              .insert({ user_id: user.id });
           } catch (e) {
             // Settings might already exist
           }

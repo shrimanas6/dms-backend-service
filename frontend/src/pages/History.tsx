@@ -32,6 +32,7 @@ export function History() {
         .from('donations')
         .select('*')
         .eq('user_id', user!.id)
+        .eq('status', 'paid')
         .order('created_at', { ascending: false });
 
       if (error) throw error;

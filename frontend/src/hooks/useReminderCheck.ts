@@ -28,6 +28,7 @@ export function useReminderCheck() {
           .from('donations')
           .select('created_at')
           .eq('user_id', user.id)
+          .eq('status', 'paid')
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -75,7 +76,7 @@ export function useReminderCheck() {
 
             await supabase
               .from('user_settings')
-              .update({ last_reminder_sent: now.toISOString() } as any)
+              .update({ last_reminder_sent: now.toISOString() })
               .eq('user_id', user.id);
           }
         }

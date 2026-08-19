@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Layout } from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
+import { api, ApiError } from '../lib/api';
 import { Heart, X, TrendingUp, IndianRupee, Lock, CheckCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import dayjs from 'dayjs';
@@ -12,6 +13,26 @@ interface Donation {
   amount: number;
   created_at: string;
 }
+
+// Mirrors the server-side validation in backend/server/index.js. This copy exists
+// for immediate feedback only - the server's check is the authoritative one.
+const AMOUNT_RE = /^\d{1,7}(\.\d{1,2})?$/;
+const MIN_RUPEES = 1;
+const MAX_RUPEES = 500000;
+
+/**
+ * All three buttons are UPI, so restrict checkout to the UPI tab instead of
+ * showing cards/netbanking/wallets. Targeting a specific app (PhonePe, GPay)
+ * would need UPI intent, which only works on Android mobile web.
+ */
+const UPI_ONLY = {
+  upi: true,
+  card: false,
+  netbanking: false,
+  wallet: false,
+  paylater: false,
+  emi: false,
+};
 
 export function Dashboard() {
   const { profile, user } = useAuth();
@@ -24,6 +45,11 @@ export function Dashboard() {
   const [recentDonations, setRecentDonations] = useState<Donation[]>([]);
   const [totalDonations, setTotalDonations] = useState(0);
   const [lastDonation, setLastDonation] = useState<string | null>(null);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [isPaying, setIsPaying] = useState(false);
+  // Tracks whether the payment resolved, so modal.ondismiss does not fight the
+  // handler / payment.failed callbacks over the step state.
+  const paidRef = useRef(false);
 
   useEffect(() => {
     if (user) {
@@ -38,6 +64,7 @@ export function Dashboard() {
         .from('donations')
         .select('*')
         .eq('user_id', user!.id)
+        .eq('status', 'paid')
         .order('created_at', { ascending: false })
         .limit(3);
 
@@ -48,7 +75,8 @@ export function Dashboard() {
         const { data: allDonations } = await supabase
           .from('donations')
           .select('amount')
-          .eq('user_id', user!.id);
+          .eq('user_id', user!.id)
+          .eq('status', 'paid');
 
         if (allDonations) {
           const total = allDonations.reduce((sum, d) => sum + Number(d.amount), 0);
@@ -64,116 +92,121 @@ export function Dashboard() {
     }
   };
 
-  const loadRazorpay = (): Promise<boolean> => {
-  return new Promise((resolve) => {
-    if ((window as any).Razorpay) {
-      resolve(true);
+  const handleRazorpayPayment = async (method: 'upi' | 'phonepe' | 'googlepay') => {
+    if (isPaying) return;
+
+    const trimmed = amount.trim();
+    if (!AMOUNT_RE.test(trimmed)) {
+      showToast(t('enterValidAmount'), 'error');
+      return;
+    }
+    const rupees = Number(trimmed);
+    if (rupees < MIN_RUPEES || rupees > MAX_RUPEES) {
+      showToast(t('amountOutOfRange'), 'error');
       return;
     }
 
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-};
-
-
- const handleRazorpayPayment = async (method: 'upi' | 'phonepe' | 'googlepay') => {
-  if (!amount || parseFloat(amount) <= 0) {
-    showToast(t('enterValidAmount'), 'error');
-    return;
-  }
-
-  const res = await loadRazorpay();
-  if (!res) {
-    showToast('Razorpay SDK failed to load', 'error');
-    return;
-  }
-
-  setPaymentMethod(method);
-  setPaymentStep('processing');
-
-  const options = {
-    key: import.meta.env.VITE_RAZORPAY_KEY_ID, // TEST KEY
-    amount: Math.round(parseFloat(amount) * 100), // paise
-    currency: 'INR',
-    name: 'Temple Donations',
-    description: 'Donation Payment',
-    image: 'https://your-logo-url.png',
-
-    handler: async function (response: any) {
-      try {
-        // Save transaction to Supabase
-        const { error } = await supabase.from('donations').insert({
-          user_id: user!.id,
-          amount: parseFloat(amount),
-          transaction_id: response.razorpay_payment_id,
-          notes: 'Razorpay Test Payment',
-        } as any);
-
-        if (error) throw error;
-
-        setPaymentStep('success');
-        showToast(t('donationSuccessful'), 'success');
-        await loadDonationStats();
-      } catch (err) {
-        console.error(err);
-        showToast(t('donationFailed'), 'error');
-        setPaymentStep('selection');
-      }
-    },
-
-    prefill: {
-      name: profile?.name || '',
-      email: user?.email || '',
-    },
-
-    theme: {
-      color: '#F97316',
-    },
-
-    modal: {
-      ondismiss: () => {
-        setPaymentStep('selection');
-      },
-    },
-  };
-
-  const paymentObject = new (window as any).Razorpay(options);
-  paymentObject.open();
-};
-
-
-
-
-
-  const handleFinalizeDonation = async () => {
-    try {
-      const transactionId = `TXN${Date.now()}${Math.random().toString(36).substring(7).toUpperCase()}`;
-
-      const { error } = await supabase.from('donations').insert({
-        user_id: user!.id,
-        amount: parseFloat(amount),
-        transaction_id: transactionId,
-      } as any);
-
-      if (error) throw error;
-
-      setPaymentStep('success');
-      showToast(t('thankYou'), 'success');
-      loadDonationStats();
-    } catch (error) {
-      showToast(t('donationFailed'), 'error');
-      setPaymentStep('selection');
+    // checkout.js is loaded from index.html.
+    if (!window.Razorpay) {
+      showToast(t('paymentInitFailed'), 'error');
+      return;
     }
+
+    setIsPaying(true);
+    setPaymentMethod(method);
+    setPaymentStep('processing');
+    paidRef.current = false;
+
+    // 1. Ask the server to create the order. It validates the amount, records a
+    //    pending donation, and returns the publishable key.
+    let order;
+    try {
+      order = await api.createOrder({ amount: trimmed });
+    } catch (err) {
+      console.error(err);
+      showToast(err instanceof ApiError ? err.message : t('paymentInitFailed'), 'error');
+      setPaymentStep('selection');
+      setIsPaying(false);
+      return;
+    }
+
+    // 2. Open checkout bound to that order. Because order_id is present, Razorpay
+    //    charges the order's amount - the client cannot influence it.
+    const options = {
+      key: order.key_id,
+      order_id: order.order_id,
+      amount: order.amount,
+      currency: order.currency,
+      name: 'Temple Donations',
+      description: 'Donation Payment',
+      method: UPI_ONLY,
+      prefill: {
+        name: profile?.name || '',
+        email: user?.email || '',
+        contact: profile?.phone || '',
+      },
+      theme: {
+        color: '#F97316',
+      },
+
+      // 3. Confirm server-side. Only the server can mark the donation paid.
+      handler: async (response: RazorpaySuccessResponse) => {
+        paidRef.current = true;
+        try {
+          const result = await api.verifyPayment({
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature: response.razorpay_signature,
+          });
+
+          setReceiptId(result.payment_id);
+          setPaymentStep('success');
+          showToast(t('donationSuccessful'), 'success');
+          await loadDonationStats();
+        } catch (err) {
+          console.error(err);
+          // The payment itself succeeded - only our confirmation call failed, and
+          // the webhook will still record it. Saying "failed" here would be wrong.
+          setReceiptId(response.razorpay_payment_id ?? null);
+          setPaymentStep('success');
+          showToast(t('verificationFailed'), 'info');
+        } finally {
+          setIsPaying(false);
+        }
+      },
+
+      modal: {
+        ondismiss: () => {
+          if (!paidRef.current) {
+            showToast(t('paymentCancelled'), 'info');
+            setPaymentStep('selection');
+            setIsPaying(false);
+          }
+        },
+      },
+    };
+
+    const paymentObject = new window.Razorpay(options);
+
+    paymentObject.on('payment.failed', (resp: RazorpayFailureResponse) => {
+      paidRef.current = true; // suppress the ondismiss double-fire
+      console.error('Razorpay payment failed:', resp?.error);
+      showToast(resp?.error?.description || t('donationFailed'), 'error');
+      setPaymentStep('selection');
+      setIsPaying(false);
+    });
+
+    paymentObject.open();
   };
 
   const resetModal = () => {
     setShowDonateModal(false);
     setPaymentStep('selection');
     setAmount('');
+    setPaymentMethod(null);
+    setReceiptId(null);
+    setIsPaying(false);
+    paidRef.current = false;
   };
 
   return (
@@ -332,6 +365,7 @@ export function Dashboard() {
 
                     <button
                       onClick={() => handleRazorpayPayment('phonepe')}
+                      disabled={isPaying}
                       className="w-full flex items-center justify-between p-4 bg-white border-2 border-gray-100 rounded-2xl hover:border-purple-500 hover:bg-purple-50 transition-all group"
                     >
                       <div className="flex items-center gap-4">
@@ -347,6 +381,7 @@ export function Dashboard() {
 
                     <button
                       onClick={() => handleRazorpayPayment('googlepay')}
+                      disabled={isPaying}
                       className="w-full flex items-center justify-between p-4 bg-white border-2 border-gray-100 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
                     >
                       <div className="flex items-center gap-4">
@@ -362,6 +397,7 @@ export function Dashboard() {
 
                     <button
                       onClick={() => handleRazorpayPayment('upi')}
+                      disabled={isPaying}
                       className="w-full flex items-center justify-between p-4 bg-white border-2 border-gray-100 rounded-2xl hover:border-orange-500 hover:bg-orange-50 transition-all group"
                     >
                       <div className="flex items-center gap-4">
@@ -422,7 +458,7 @@ export function Dashboard() {
                   </div>
                   <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
                     <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">{t('receiptId')}</p>
-                    <p className="font-mono text-gray-700">RZP_{Date.now().toString().slice(-8)}</p>
+                    <p className="font-mono text-gray-700 break-all">{receiptId ?? '—'}</p>
                   </div>
                   <button
                     onClick={resetModal}

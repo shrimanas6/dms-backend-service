@@ -58,14 +58,14 @@ export function Settings() {
         .update({
           notifications_enabled: notificationsEnabled,
           sms_enabled: smsEnabled
-        } as any)
+        })
         .eq('user_id', user!.id);
 
       if (settingsError) throw settingsError;
 
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({ phone } as any)
+        .update({ phone })
         .eq('id', user!.id);
 
       if (profileError) throw profileError;

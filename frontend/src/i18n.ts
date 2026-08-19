@@ -46,6 +46,8 @@ export const resources = {
             donationFailed: 'Donation failed. Please try again.',
             thankYou: 'Thank you for your donation!',
             verificationFailed: 'Failed to verify donation. Please contact support.',
+            paymentCancelled: 'Payment cancelled',
+            amountOutOfRange: 'Amount must be between ₹1 and ₹5,00,000',
 
             // Settings
             notificationPreferences: 'Notification Preferences',
@@ -146,6 +148,8 @@ export const resources = {
             donationFailed: 'ದೇಣಿಗೆ ವಿಫಲವಾಗಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
             thankYou: 'ನಿಮ್ಮ ದೇಣಿಗೆಗಾಗಿ ಧನ್ಯವಾದಗಳು!',
             verificationFailed: 'ದೇಣಿಗೆಯನ್ನು ಪರಿಶೀಲಿಸಲು ವಿಫಲವಾಗಿದೆ. ದಯವಿಟ್ಟು ಬೆಂಬಲವನ್ನು ಸಂಪರ್ಕಿಸಿ.',
+            paymentCancelled: 'ಪಾವತಿ ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ',
+            amountOutOfRange: 'ಮೊತ್ತವು ₹1 ರಿಂದ ₹5,00,000 ರ ನಡುವೆ ಇರಬೇಕು',
 
             // Settings
             notificationPreferences: 'ಅಧಿಸೂಚನೆ ಆದ್ಯತೆಗಳು',
