@@ -40,7 +40,12 @@ app.use(cors(corsOptions));
 // tunnelling webhooks through ngrok.
 app.get('/health', (req, res) => res.json({ ok: true }));
 
-// --- raw-body routes are registered here; nothing below may be moved above ---
+// Razorpay webhook - raw body, MUST stay above express.json().
+app.post(
+    '/api/payments/webhook',
+    express.raw({ type: 'application/json', limit: '1mb' }),
+    handleRazorpayWebhook
+);
 
 // Global JSON parser for every other route.
 app.use(express.json({ limit: '100kb' }));
@@ -143,6 +148,140 @@ async function requireAuth(req, res, next) {
     } catch (err) {
         console.error('Auth check failed:', err);
         return res.status(503).json({ error: 'Auth check failed' });
+    }
+}
+
+/* ------------------------------ RAZORPAY WEBHOOK --------------------------- */
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Marks the donation behind this payment as paid.
+ *
+ * Ordered update -> lookup -> insert so that it is idempotent (a replayed webhook
+ * updates nothing) while still recovering an "orphan" payment: one where the
+ * Razorpay order was created but our pending insert failed and the user paid
+ * anyway. The owner is recovered from the notes set at order creation.
+ */
+async function markPaid(payment) {
+    const paidAt = new Date(payment.created_at * 1000).toISOString();
+
+    const { data, error } = await supabaseAdmin
+        .from('donations')
+        .update({
+            status: 'paid',
+            razorpay_payment_id: payment.id,
+            transaction_id: payment.id,
+            method: payment.method ?? null,
+            paid_at: paidAt,
+        })
+        .eq('razorpay_order_id', payment.order_id)
+        .neq('status', 'paid') // replays become no-ops
+        .select('id')
+        .maybeSingle();
+
+    if (error) throw error;
+    if (data) return;
+
+    // Nothing updated: either the row is already paid, or there is no row at all.
+    const { data: existing, error: selErr } = await supabaseAdmin
+        .from('donations')
+        .select('id')
+        .eq('razorpay_order_id', payment.order_id)
+        .maybeSingle();
+
+    if (selErr) throw selErr;
+    if (existing) return; // already paid - nothing to do
+
+    const userId = payment.notes?.user_id;
+    if (!UUID_RE.test(String(userId ?? ''))) {
+        console.error('Orphan payment with no usable user_id in notes:', payment.id);
+        return;
+    }
+
+    const { error: insErr } = await supabaseAdmin.from('donations').insert({
+        user_id: userId,
+        amount: payment.amount / 100,
+        amount_paise: payment.amount,
+        currency: payment.currency ?? 'INR',
+        transaction_id: payment.id,
+        razorpay_order_id: payment.order_id,
+        razorpay_payment_id: payment.id,
+        method: payment.method ?? null,
+        status: 'paid',
+        paid_at: paidAt,
+        notes: 'Razorpay donation (recovered via webhook)',
+    });
+
+    // 23505 = unique violation: a concurrent verify/webhook won the race. Fine.
+    if (insErr && insErr.code !== '23505') throw insErr;
+}
+
+/** Records a failed payment. Never downgrades a row that is already paid. */
+async function markFailed(payment) {
+    const { error } = await supabaseAdmin
+        .from('donations')
+        .update({
+            status: 'failed',
+            razorpay_payment_id: payment.id,
+            failure_reason: payment.error_description ?? payment.error_reason ?? null,
+        })
+        .eq('razorpay_order_id', payment.order_id)
+        .neq('status', 'paid');
+
+    if (error) throw error;
+}
+
+/**
+ * Razorpay webhook. Registered with express.raw() ABOVE the global JSON parser so
+ * the HMAC is computed over the exact bytes Razorpay signed.
+ *
+ * The signature IS the authentication here - there is no bearer token. This is
+ * the safety net for a browser that dies or loses network right after paying:
+ * without it, money is taken and no donation is ever recorded.
+ */
+async function handleRazorpayWebhook(req, res) {
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!secret || !supabaseAdmin) {
+        console.error('Webhook received but RAZORPAY_WEBHOOK_SECRET / Supabase is not configured');
+        return res.status(500).json({ error: 'Webhook not configured' });
+    }
+
+    const signature = req.headers['x-razorpay-signature'];
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+
+    if (!signature || !safeEqualHex(expected, signature)) {
+        console.warn('Webhook signature rejected');
+        return res.status(400).json({ error: 'Invalid signature' });
+    }
+
+    let event;
+    try {
+        event = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+        return res.status(400).json({ error: 'Malformed payload' });
+    }
+
+    try {
+        const entity = event?.payload?.payment?.entity;
+
+        switch (event?.event) {
+            case 'payment.captured':
+                if (entity) await markPaid(entity);
+                break;
+            case 'payment.failed':
+                if (entity) await markFailed(entity);
+                break;
+            default:
+                break; // unhandled event types are acknowledged, not retried
+        }
+
+        return res.json({ received: true });
+    } catch (err) {
+        console.error('Webhook processing error:', err);
+        // A non-2xx makes Razorpay retry with backoff for ~24h.
+        return res.status(500).json({ error: 'Processing failed' });
     }
 }
 
