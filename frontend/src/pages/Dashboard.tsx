@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
 import { api, ApiError } from '../lib/api';
-import { Heart, X, TrendingUp, IndianRupee, Lock, CheckCircle } from 'lucide-react';
+import { Heart, X, TrendingUp, IndianRupee, Lock, CheckCircle, ArrowRight, AlertCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import dayjs from 'dayjs';
 
@@ -20,28 +20,16 @@ const AMOUNT_RE = /^\d{1,7}(\.\d{1,2})?$/;
 const MIN_RUPEES = 1;
 const MAX_RUPEES = 500000;
 
-/**
- * All three buttons are UPI, so restrict checkout to the UPI tab instead of
- * showing cards/netbanking/wallets. Targeting a specific app (PhonePe, GPay)
- * would need UPI intent, which only works on Android mobile web.
- */
-const UPI_ONLY = {
-  upi: true,
-  card: false,
-  netbanking: false,
-  wallet: false,
-  paylater: false,
-  emi: false,
-};
-
 export function Dashboard() {
   const { profile, user } = useAuth();
   const { showToast } = useToast();
   const { t } = useTranslation();
   const [showDonateModal, setShowDonateModal] = useState(false);
   const [paymentStep, setPaymentStep] = useState<'selection' | 'processing' | 'success'>('selection');
+  const [selectedMethod, setSelectedMethod] = useState<'upi' | 'phonepe' | 'googlepay'>('upi');
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'phonepe' | 'googlepay' | null>(null);
   const [amount, setAmount] = useState('');
+  const [amountError, setAmountError] = useState<string | null>(null);
   const [recentDonations, setRecentDonations] = useState<Donation[]>([]);
   const [totalDonations, setTotalDonations] = useState(0);
   const [lastDonation, setLastDonation] = useState<string | null>(null);
@@ -92,19 +80,50 @@ export function Dashboard() {
     }
   };
 
-  const handleRazorpayPayment = async (method: 'upi' | 'phonepe' | 'googlepay') => {
+  const handleAmountChange = (val: string) => {
+    setAmount(val);
+    if (!val.trim()) {
+      setAmountError(null);
+      return;
+    }
+    if (!AMOUNT_RE.test(val.trim())) {
+      setAmountError(t('enterValidAmount'));
+      return;
+    }
+    const rupees = Number(val.trim());
+    if (rupees < MIN_RUPEES || rupees > MAX_RUPEES) {
+      setAmountError(t('amountOutOfRange'));
+      return;
+    }
+    setAmountError(null);
+  };
+
+  const handlePresetClick = (preset: number) => {
+    setAmount(preset.toString());
+    setAmountError(null);
+  };
+
+  const handleRazorpayPayment = async (method: 'upi' | 'phonepe' | 'googlepay' = selectedMethod) => {
     if (isPaying) return;
 
     const trimmed = amount.trim();
+    if (!trimmed) {
+      setAmountError(t('enterValidAmount'));
+      showToast(t('enterValidAmount'), 'error');
+      return;
+    }
     if (!AMOUNT_RE.test(trimmed)) {
+      setAmountError(t('enterValidAmount'));
       showToast(t('enterValidAmount'), 'error');
       return;
     }
     const rupees = Number(trimmed);
     if (rupees < MIN_RUPEES || rupees > MAX_RUPEES) {
+      setAmountError(t('amountOutOfRange'));
       showToast(t('amountOutOfRange'), 'error');
       return;
     }
+    setAmountError(null);
 
     // checkout.js is loaded from index.html.
     if (!window.Razorpay) {
@@ -139,7 +158,6 @@ export function Dashboard() {
       currency: order.currency,
       name: 'Temple Donations',
       description: 'Donation Payment',
-      method: UPI_ONLY,
       prefill: {
         name: profile?.name || '',
         email: user?.email || '',
@@ -203,6 +221,8 @@ export function Dashboard() {
     setShowDonateModal(false);
     setPaymentStep('selection');
     setAmount('');
+    setAmountError(null);
+    setSelectedMethod('upi');
     setPaymentMethod(null);
     setReceiptId(null);
     setIsPaying(false);
@@ -315,9 +335,15 @@ export function Dashboard() {
 
             <div className="p-8 overflow-y-auto flex-1 custom-scrollbar">
               {paymentStep === 'selection' && (
-                <div className="space-y-6">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleRazorpayPayment(selectedMethod);
+                  }}
+                  className="space-y-6"
+                >
                   {/* Amount Selection Section */}
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     <div>
                       <label htmlFor="amount" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                         {t('donationAmount')}
@@ -329,15 +355,26 @@ export function Dashboard() {
                         <input
                           id="amount"
                           type="number"
-                          step="0.01"
-                          min="0.01"
+                          step="any"
+                          min="1"
+                          max="500000"
                           autoFocus
                           value={amount}
-                          onChange={(e) => setAmount(e.target.value)}
-                          className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:ring-4 focus:ring-orange-100 focus:border-orange-500 transition-all text-xl font-bold text-gray-800"
+                          onChange={(e) => handleAmountChange(e.target.value)}
+                          className={`w-full pl-10 pr-4 py-3 bg-gray-50 border-2 rounded-xl focus:ring-4 transition-all text-xl font-bold text-gray-800 ${
+                            amountError
+                              ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                              : 'border-gray-100 focus:ring-orange-100 focus:border-orange-500'
+                          }`}
                           placeholder="0.00"
                         />
                       </div>
+                      {amountError && (
+                        <div className="flex items-center gap-1.5 mt-2 text-xs text-red-500 font-medium">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{amountError}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-4 gap-2">
@@ -345,11 +382,12 @@ export function Dashboard() {
                         <button
                           key={preset}
                           type="button"
-                          onClick={() => setAmount(preset.toString())}
-                          className={`py-2 px-1 border-2 rounded-xl transition-all font-bold text-sm ${amount === preset.toString()
-                            ? 'bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-200'
-                            : 'border-gray-100 text-gray-600 hover:border-orange-200 hover:bg-orange-50'
-                            }`}
+                          onClick={() => handlePresetClick(preset)}
+                          className={`py-2 px-1 border-2 rounded-xl transition-all font-bold text-sm ${
+                            amount === preset.toString()
+                              ? 'bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-200'
+                              : 'border-gray-100 text-gray-600 hover:border-orange-200 hover:bg-orange-50'
+                          }`}
                         >
                           ₹{preset}
                         </button>
@@ -357,74 +395,142 @@ export function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="h-px bg-gray-100 my-2"></div>
+                  <div className="h-px bg-gray-100 my-1"></div>
 
-                  {/* Payment Methods Section */}
+                  {/* Payment Method Selection */}
                   <div className="space-y-3">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('payUsing')} UPI</p>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                      {t('selectPaymentMethod')}
+                    </p>
 
                     <button
-                      onClick={() => handleRazorpayPayment('phonepe')}
+                      type="button"
+                      onClick={() => setSelectedMethod('phonepe')}
                       disabled={isPaying}
-                      className="w-full flex items-center justify-between p-4 bg-white border-2 border-gray-100 rounded-2xl hover:border-purple-500 hover:bg-purple-50 transition-all group"
+                      className={`w-full flex items-center justify-between p-3.5 bg-white border-2 rounded-2xl transition-all text-left group ${
+                        selectedMethod === 'phonepe'
+                          ? 'border-purple-500 bg-purple-50/50 shadow-sm ring-2 ring-purple-100'
+                          : 'border-gray-100 hover:border-purple-200 hover:bg-purple-50/30'
+                      }`}
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <img src="https://cryptologos.cc/logos/phonepe-logo.png" alt="PhonePe" className="w-7 h-7 object-contain" onError={(e) => (e.currentTarget.src = "https://www.phonepe.com/favicon-32x32.png")} />
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center shrink-0">
+                          <img
+                            src="https://cryptologos.cc/logos/phonepe-logo.png"
+                            alt="PhonePe"
+                            className="w-7 h-7 object-contain"
+                            onError={(e) => (e.currentTarget.src = "https://www.phonepe.com/favicon-32x32.png")}
+                          />
                         </div>
-                        <p className="font-bold text-gray-800">PhonePe</p>
+                        <div>
+                          <p className="font-bold text-gray-800 text-sm">PhonePe</p>
+                          <p className="text-[11px] text-gray-500">Pay via PhonePe UPI</p>
+                        </div>
                       </div>
-                      <div className="w-5 h-5 border-2 border-gray-200 rounded-full group-hover:border-purple-500 flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 bg-purple-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                      <div className={`w-5 h-5 border-2 rounded-full flex items-center justify-center transition-all ${
+                        selectedMethod === 'phonepe'
+                          ? 'border-purple-600 bg-purple-600'
+                          : 'border-gray-300 group-hover:border-purple-400'
+                      }`}>
+                        {selectedMethod === 'phonepe' && (
+                          <div className="w-2 h-2 bg-white rounded-full"></div>
+                        )}
                       </div>
                     </button>
 
                     <button
-                      onClick={() => handleRazorpayPayment('googlepay')}
+                      type="button"
+                      onClick={() => setSelectedMethod('googlepay')}
                       disabled={isPaying}
-                      className="w-full flex items-center justify-between p-4 bg-white border-2 border-gray-100 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                      className={`w-full flex items-center justify-between p-3.5 bg-white border-2 rounded-2xl transition-all text-left group ${
+                        selectedMethod === 'googlepay'
+                          ? 'border-blue-500 bg-blue-50/50 shadow-sm ring-2 ring-blue-100'
+                          : 'border-gray-100 hover:border-blue-200 hover:bg-blue-50/30'
+                      }`}
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-                          <img src="https://www.gstatic.com/images/branding/product/2x/googleg_96dp.png" alt="Google Pay" className="w-7 h-7 object-contain" />
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center shrink-0">
+                          <img
+                            src="https://www.gstatic.com/images/branding/product/2x/googleg_96dp.png"
+                            alt="Google Pay"
+                            className="w-7 h-7 object-contain"
+                          />
                         </div>
-                        <p className="font-bold text-gray-800">Google Pay</p>
+                        <div>
+                          <p className="font-bold text-gray-800 text-sm">Google Pay</p>
+                          <p className="text-[11px] text-gray-500">Pay via Google Pay UPI</p>
+                        </div>
                       </div>
-                      <div className="w-5 h-5 border-2 border-gray-200 rounded-full group-hover:border-blue-500 flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 bg-blue-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                      <div className={`w-5 h-5 border-2 rounded-full flex items-center justify-center transition-all ${
+                        selectedMethod === 'googlepay'
+                          ? 'border-blue-600 bg-blue-600'
+                          : 'border-gray-300 group-hover:border-blue-400'
+                      }`}>
+                        {selectedMethod === 'googlepay' && (
+                          <div className="w-2 h-2 bg-white rounded-full"></div>
+                        )}
                       </div>
                     </button>
 
                     <button
-                      onClick={() => handleRazorpayPayment('upi')}
+                      type="button"
+                      onClick={() => setSelectedMethod('upi')}
                       disabled={isPaying}
-                      className="w-full flex items-center justify-between p-4 bg-white border-2 border-gray-100 rounded-2xl hover:border-orange-500 hover:bg-orange-50 transition-all group"
+                      className={`w-full flex items-center justify-between p-3.5 bg-white border-2 rounded-2xl transition-all text-left group ${
+                        selectedMethod === 'upi'
+                          ? 'border-orange-500 bg-orange-50/50 shadow-sm ring-2 ring-orange-100'
+                          : 'border-gray-100 hover:border-orange-200 hover:bg-orange-50/30'
+                      }`}
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 font-bold text-xs">
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 font-bold text-xs shrink-0">
                           UPI
                         </div>
-                        <p className="font-bold text-gray-800">{t('payUsingUpi')}</p>
+                        <div>
+                          <p className="font-bold text-gray-800 text-sm">{t('payUsingUpi')}</p>
+                          <p className="text-[11px] text-gray-500">Paytm, BHIM, QR Code & others</p>
+                        </div>
                       </div>
-                      <div className="w-5 h-5 border-2 border-gray-200 rounded-full group-hover:border-orange-500 flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 bg-orange-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                      <div className={`w-5 h-5 border-2 rounded-full flex items-center justify-center transition-all ${
+                        selectedMethod === 'upi'
+                          ? 'border-orange-500 bg-orange-500'
+                          : 'border-gray-300 group-hover:border-orange-400'
+                      }`}>
+                        {selectedMethod === 'upi' && (
+                          <div className="w-2 h-2 bg-white rounded-full"></div>
+                        )}
                       </div>
                     </button>
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="flex flex-col items-center gap-2 text-[10px] text-gray-400 justify-center pt-2">
-                      <div className="flex items-center gap-2">
-                        <Lock className="w-3 h-3" />
+                  {/* Primary Donate Action Button */}
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={isPaying}
+                      className="w-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 active:scale-[0.99] text-white py-4 px-6 rounded-2xl font-bold shadow-lg shadow-orange-200 hover:shadow-orange-300 transition-all flex items-center justify-center gap-3 text-base disabled:opacity-50 disabled:cursor-not-allowed group"
+                    >
+                      <Heart className="w-5 h-5 fill-white/20 group-hover:scale-110 transition-transform" />
+                      <span>
+                        {t('proceedToDonate')} {amount && !amountError ? `₹${Number(amount).toLocaleString('en-IN')}` : ''}
+                      </span>
+                      <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 pt-1">
+                    <div className="flex flex-col items-center gap-1.5 text-[10px] text-gray-400 justify-center">
+                      <div className="flex items-center gap-1.5 font-medium">
+                        <Lock className="w-3.5 h-3.5 text-gray-400" />
                         <span>{t('securedBy')}</span>
                       </div>
                       <p className="text-gray-400 font-medium italic">{t('qrNote')}</p>
-                      <p className="text-[9px] text-amber-500 font-semibold bg-amber-50 px-3 py-1 rounded-full border border-amber-100 mt-1">
+                      <p className="text-[9px] text-amber-600 font-semibold bg-amber-50 px-3 py-1 rounded-full border border-amber-200/60 mt-0.5">
                         {t('testModeNote')}
                       </p>
                     </div>
                   </div>
-                </div>
+                </form>
               )}
 
               {paymentStep === 'processing' && (

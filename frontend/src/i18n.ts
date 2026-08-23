@@ -47,6 +47,9 @@ export const resources = {
             thankYou: 'Thank you for your donation!',
             verificationFailed: 'Failed to verify donation. Please contact support.',
             paymentCancelled: 'Payment cancelled',
+            proceedToDonate: 'Proceed to Donate',
+            selectPaymentMethod: 'Select Payment Option',
+            payWith: 'Pay with',
             amountOutOfRange: 'Amount must be between ₹1 and ₹5,00,000',
 
             // Settings
@@ -149,6 +152,9 @@ export const resources = {
             thankYou: 'ನಿಮ್ಮ ದೇಣಿಗೆಗಾಗಿ ಧನ್ಯವಾದಗಳು!',
             verificationFailed: 'ದೇಣಿಗೆಯನ್ನು ಪರಿಶೀಲಿಸಲು ವಿಫಲವಾಗಿದೆ. ದಯವಿಟ್ಟು ಬೆಂಬಲವನ್ನು ಸಂಪರ್ಕಿಸಿ.',
             paymentCancelled: 'ಪಾವತಿ ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ',
+            proceedToDonate: 'ದೇಣಿಗೆ ನೀಡಲು ಮುಂದುವರಿಯಿರಿ',
+            selectPaymentMethod: 'ಪಾವತಿ ಆಯ್ಕೆಯನ್ನು ಆರಿಸಿ',
+            payWith: 'ಪಾವತಿಸಿ',
             amountOutOfRange: 'ಮೊತ್ತವು ₹1 ರಿಂದ ₹5,00,000 ರ ನಡುವೆ ಇರಬೇಕು',
 
             // Settings
