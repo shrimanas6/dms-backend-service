@@ -5,13 +5,40 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 export const resources = {
     en: {
         translation: {
-            // Layout
+            // Layout & Navigation
+            home: 'Home',
             dashboard: 'Dashboard',
             about: 'About',
+            contact: 'Contact Us',
             history: 'History',
             settings: 'Settings',
             templeName: 'Sri Ballamanja Temple',
             signOut: 'Sign Out',
+            signIn: 'Sign In',
+            register: 'Register',
+            devoteePortal: 'Devotee Portal',
+
+            // Home / Landing Page
+            heroTitle: 'Sri Ballamanja Temple',
+            heroSubtitle: 'A sacred haven of devotion, spirituality, and divine blessings for generations.',
+            supportTheTemple: 'Offer Seva & Donation',
+            supportTheTempleDesc: 'Contribute towards daily Annadana, temple maintenance, and sacred ceremonies online via secure UPI.',
+            learnMore: 'Learn More',
+            darshanTimingsTitle: 'Darshan & Pooja Schedule',
+            morningDarshanTime: '6:00 AM – 1:00 PM',
+            eveningDarshanTime: '5:00 PM – 8:30 PM',
+            mahaPoojaTime: '12:00 PM & 7:30 PM',
+            annadanaPrasadam: 'Maha Annadana Prasadam',
+            annadanaPrasadamDesc: 'Served daily to all visiting devotees from 12:30 PM onwards.',
+            templeHighlights: 'Sacred Offerings & Sevas',
+            annadanaSeva: 'Annadana Seva',
+            annadanaSevaDesc: 'Provide blessed meals to visiting devotees and pilgrims.',
+            poojaSeva: 'Special Pooja & Archana',
+            poojaSevaDesc: 'Perform sacred rituals and seek Lord Shiva’s divine blessings.',
+            templeRenovation: 'Temple & Goshala Seva',
+            templeRenovationDesc: 'Support temple development, holy sanctum upkeep, and cow sanctuary.',
+            quickDonateCta: 'Donate Online via UPI',
+            quickDonateCtaDesc: 'Quick, transparent, and instant online receipts powered by Razorpay.',
 
             // Dashboard
             welcome: 'Welcome',
@@ -106,17 +133,75 @@ export const resources = {
             festivalsDesc: 'Grand celebrations throughout the year',
             prasadam: 'Prasadam',
             prasadamDesc: 'Sacred food offered to devotees',
+
+            // Contact Page
+            contactUsTitle: 'Contact Temple Office',
+            contactUsSubtitle: 'Get in touch for seva bookings, pooja schedules, or temple trust inquiries.',
+            registeredOffice: 'Registered Office',
+            templeTrustName: 'Sri Ballamanja Temple Seva Trust (Regd.)',
+            templeAddress: 'Ballamanja, Belthangady Taluk, Dakshina Kannada District, Karnataka - 574214, India',
+            officialPhone: 'Official Contact Numbers',
+            primaryPhone: '+91 94800 00000',
+            secondaryPhone: '+91 8256 200000',
+            officialEmail: 'Official Email Address',
+            primaryEmail: 'info@ballamanjatemple.org',
+            officeHours: 'Office Working Hours',
+            officeHoursTime: '9:00 AM to 6:00 PM (All Days)',
+            sendInquiry: 'Send Us a Message',
+            nameLabel: 'Your Name',
+            emailLabel: 'Your Email',
+            phoneLabel: 'Mobile Number',
+            messageLabel: 'Your Message / Inquiry',
+            sendButton: 'Submit Inquiry',
+            inquirySent: 'Thank you! Your inquiry has been sent to the temple office.',
+
+            // Footer & Legal
+            quickLinks: 'Quick Links',
+            legalPolicies: 'Legal & Policies',
+            termsAndConditions: 'Terms & Conditions',
+            privacyPolicy: 'Privacy Policy',
+            refundPolicy: 'Refund & Cancellation Policy',
+            allRightsReserved: 'All rights reserved.',
+            securedPaymentText: 'Payments securely processed via Razorpay with 256-bit SSL encryption.',
+            trustRegInfo: 'Registered Religious & Charitable Trust under the Karnataka Societies & Trust Act.',
         }
     },
     kn: {
         translation: {
-            // Layout
+            // Layout & Navigation
+            home: 'ಮುಖಪುಟ',
             dashboard: 'ಡ್ಯಾಶ್‌ಬೋರ್ಡ್',
             about: 'ನಮ್ಮ ಬಗ್ಗೆ',
+            contact: 'ಸಂಪರ್ಕಿಸಿ',
             history: 'ಇತಿಹಾಸ',
             settings: 'ಸೆಟ್ಟಿಂಗ್‌ಗಳು',
             templeName: 'ಶ್ರೀ ಬಲ್ಲಮಂಜ ದೇವಸ್ಥಾನ',
             signOut: 'ನಿರ್ಗಮಿಸಿ',
+            signIn: 'ಲಾಗಿನ್',
+            register: 'ನೋಂದಣಿ',
+            devoteePortal: 'ಭಕ್ತರ ಪೋರ್ಟಲ್',
+
+            // Home / Landing Page
+            heroTitle: 'ಶ್ರೀ ಬಲ್ಲಮಂಜ ದೇವಸ್ಥಾನ',
+            heroSubtitle: 'ತಲೆಮಾರುಗಳಿಂದ ಭಕ್ತಿ, ಆಧ್ಯಾತ್ಮಿಕತೆ ಮತ್ತು ದೈವಿಕ ಆಶೀರ್ವಾದದ ಪವಿತ್ರ ಕ್ಷೇತ್ರ.',
+            supportTheTemple: 'ಸೇವೆ ಮತ್ತು ದೇಣಿಗೆ ನೀಡಿ',
+            supportTheTempleDesc: 'ಸುರಕ್ಷಿತ UPI ಮೂಲಕ ದೈನಂದಿನ ಅನ್ನದಾನ, ದೇವಸ್ಥಾನ ನಿರ್ವಹಣೆ ಮತ್ತು ಪವಿತ್ರ ಪೂಜೆಗಳಿಗೆ ಆನ್‌ಲೈನ್‌ನಲ್ಲಿ ಕೊಡುಗೆ ನೀಡಿ.',
+            learnMore: 'ಹೆಚ್ಚಿನ ವಿವರ',
+            darshanTimingsTitle: 'ದರ್ಶನ ಮತ್ತು ಪೂಜಾ ಸಮಯ',
+            morningDarshanTime: 'ಬೆಳಗ್ಗೆ 6:00 – ಮಧ್ಯಾಹ್ನ 1:00',
+            eveningDarshanTime: 'ಸಂಜೆ 5:00 – ರಾತ್ರಿ 8:30',
+            mahaPoojaTime: 'ಮಧ್ಯಾಹ್ನ 12:00 ಮತ್ತು ರಾತ್ರಿ 7:30',
+            annadanaPrasadam: 'ಮಹಾ ಅನ್ನದಾನ ಪ್ರಸಾದ',
+            annadanaPrasadamDesc: 'ಪ್ರತಿದಿನ ಮಧ್ಯಾಹ್ನ 12:30 ರಿಂದ ಬರುವ ಎಲ್ಲಾ ಭಕ್ತರಿಗೆ ಅನ್ನದಾನ ಸೇವೆ ಲಭ್ಯವಿದೆ.',
+            templeHighlights: 'ಪವಿತ್ರ ಸೇವೆಗಳು ಮತ್ತು ಕಾಣಿಕೆ',
+            annadanaSeva: 'ಅನ್ನದಾನ ಸೇವೆ',
+            annadanaSevaDesc: 'ದೇವಸ್ಥಾನಕ್ಕೆ ಬರುವ ಭಕ್ತರಿಗೆ ಮತ್ತು ಯಾತ್ರಿಕರಿಗೆ ಅನ್ನದಾನ ಅರ್ಪಿಸಿ.',
+            poojaSeva: 'ವಿಶೇಷ ಪೂಜೆ ಮತ್ತು ಅರ್ಚನೆ',
+            poojaSevaDesc: 'ವಿಶೇಷ ಧಾರ್ಮಿಕ ಪೂಜೆಗಳನ್ನು ನಡೆಸಿ ಶಿವನ ಕೃಪೆಗೆ ಪಾತ್ರರಾಗಿ.',
+            templeRenovation: 'ದೇವಸ್ಥಾನ ಮತ್ತು ಗೋಶಾಲೆ ಸೇವೆ',
+            templeRenovationDesc: 'ದೇವಸ್ಥಾನದ ಅಭಿವೃದ್ಧಿ ಹಾಗೂ ಗೋಸಂರಕ್ಷಣೆಗೆ ನೆರವಾಗಿ.',
+            quickDonateCta: 'UPI ಮೂಲಕ ಆನ್‌ಲೈನ್ ದೇಣಿಗೆ ನೀಡಿ',
+            quickDonateCtaDesc: 'ರೇಜರ್‌ಪೇ (Razorpay) ಮೂಲಕ ತ್ವರಿತ, ಪಾರದರ್ಶಕ ಮತ್ತು ತಕ್ಷಣದ ರಶೀದಿಗಳು.',
 
             // Dashboard
             welcome: 'ಸ್ವಾಗತ',
@@ -211,6 +296,37 @@ export const resources = {
             festivalsDesc: 'ವರ್ಷವಿಡೀ ಭವ್ಯ ಆಚರಣೆಗಳು',
             prasadam: 'ಪ್ರಸಾದ',
             prasadamDesc: 'ಭಕ್ತರಿಗೆ ನೀಡುವ ಪವಿತ್ರ ಆಹಾರ',
+
+            // Contact Page
+            contactUsTitle: 'ದೇವಸ್ಥಾನದ ಕಚೇರಿಯನ್ನು ಸಂಪರ್ಕಿಸಿ',
+            contactUsSubtitle: 'ಸೇವಾ ಬುಕಿಂಗ್, ಪೂಜಾ ಸಮಯ ಅಥವಾ ದೇವಸ್ಥಾನ ಟ್ರಸ್ಟ್ ವಿಚಾರಣೆಗಳಿಗಾಗಿ ನಮ್ಮನ್ನು ಸಂಪರ್ಕಿಸಿ.',
+            registeredOffice: 'ನೋಂದಾಯಿತ ಕಚೇರಿ',
+            templeTrustName: 'ಶ್ರೀ ಬಲ್ಲಮಂಜ ದೇವಸ್ಥಾನ ಸೇವಾ ಟ್ರಸ್ಟ್ (ರಿ.)',
+            templeAddress: 'ಬಲ್ಲಮಂಜ, ಬೆಳ್ತಂಗಡಿ ತಾಲೂಕು, ದಕ್ಷಿಣ ಕನ್ನಡ ಜಿಲ್ಲೆ, ಕರ್ನಾಟಕ - 574214, ಭಾರತ',
+            officialPhone: 'ಅಧಿಕೃತ ಸಂಪರ್ಕ ಸಂಖ್ಯೆಗಳು',
+            primaryPhone: '+91 94800 00000',
+            secondaryPhone: '+91 8256 200000',
+            officialEmail: 'ಅಧಿಕೃತ ಇಮೇಲ್ ವಿಳಾಸ',
+            primaryEmail: 'info@ballamanjatemple.org',
+            officeHours: 'ಕಚೇರಿ ಕೆಲಸದ ಸಮಯ',
+            officeHoursTime: 'ಬೆಳಗ್ಗೆ 9:00 ರಿಂದ ಸಂಜೆ 6:00 (ಎಲ್ಲಾ ದಿನಗಳು)',
+            sendInquiry: 'ಸಂದೇಶ ಕಳುಹಿಸಿ',
+            nameLabel: 'ನಿಮ್ಮ ಹೆಸರು',
+            emailLabel: 'ನಿಮ್ಮ ಇಮೇಲ್',
+            phoneLabel: 'ಮೊಬೈಲ್ ಸಂಖ್ಯೆ',
+            messageLabel: 'ನಿಮ್ಮ ಸಂದೇಶ / ವಿಚಾರಣೆ',
+            sendButton: 'ವಿಚಾರಣೆಯನ್ನು ಸಲ್ಲಿಸಿ',
+            inquirySent: 'ಧನ್ಯವಾದಗಳು! ನಿಮ್ಮ ಸಂದೇಶವನ್ನು ದೇವಸ್ಥಾನ ಕಚೇರಿಗೆ ಕಳುಹಿಸಲಾಗಿದೆ.',
+
+            // Footer & Legal
+            quickLinks: 'ತ್ವರಿತ ಲಿಂಕ್‌ಗಳು',
+            legalPolicies: 'ನೀತಿಗಳು ಮತ್ತು ಕಾನೂನು',
+            termsAndConditions: 'ನಿಯಮಗಳು ಮತ್ತು ಷರತ್ತುಗಳು',
+            privacyPolicy: 'ಗೌಪ್ಯತಾ ನೀತಿ',
+            refundPolicy: 'ಮರುಪಾವತಿ ಮತ್ತು ರದ್ದತಿ ನೀತಿ',
+            allRightsReserved: 'ಎಲ್ಲಾ ಹಕ್ಕುಗಳನ್ನು ಕಾಯ್ದಿರಿಸಲಾಗಿದೆ.',
+            securedPaymentText: 'ರೇಜರ್‌ಪೇ ಮೂಲಕ 256-bit SSL ಎನ್‌ಕ್ರಿಪ್ಶನ್‌ನೊಂದಿಗೆ ಪಾವತಿಗಳನ್ನು ಸುರಕ್ಷಿತವಾಗಿ ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲಾಗುತ್ತದೆ.',
+            trustRegInfo: 'ಕರ್ನಾಟಕ ಸೊಸೈಟೀಸ್ ಮತ್ತು ಟ್ರಸ್ಟ್ ಕಾಯ್ದೆಯಡಿ ನೋಂದಾಯಿತ ಧಾರ್ಮಿಕ ಮತ್ತು ದತ್ತಿ ಟ್ರಸ್ಟ್.',
         }
     }
 };
